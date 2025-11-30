@@ -1,0 +1,41 @@
+name: Build and Deploy to ECR/EKS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build_and_push:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-region: eu-west-1
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        role-session-name: github-actions
+
+    - name: Login to ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag, and push image to ECR
+      env:
+        ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+        IMAGE_REPO_NAME: portfolio-app
+      run: |
+        docker build -t $ECR_REGISTRY/$IMAGE_REPO_NAME:latest app
+        docker push $ECR_REGISTRY/$IMAGE_REPO_NAME:latest
+
+    - name: Update Kubernetes deployment
+      uses: azure/k8s-deploy@v3
+      with:
+        manifests: |
+          k8s/namespace.yaml
+          k8s/deployment.yaml
+          k8s/service.yaml
+        images: ${{ secrets.ECR_REGISTRY }}/portfolio-app:latest
